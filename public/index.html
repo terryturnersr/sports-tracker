@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sports Tracker">
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="/manifest.json">
+<title>Sports Tracker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --green: #2d6a4f; --green-light: #e8f5ee; --green-badge: #1b4332; --green-text: #2d6a4f;
+    --navy: #1a2744; --navy-light: #e8edf8; --navy-badge: #1a2744;
+    --pink-light: #fdecea; --pink-badge: #c0392b;
+    --blue: #1a3560; --blue-light: #e6eef8;
+    --win: #2d6a4f; --loss: #c0392b; --upcoming: #1a2744; --finished: #666;
+    --text: #1a1a1a; --text-muted: #666; --text-light: #999;
+    --border: #e0e0e0; --card-bg: #fff; --bg: #f5f5f5;
+    --tab-h: 68px; --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overscroll-behavior: none; }
+  .screen { display: none; flex-direction: column; min-height: 100vh; }
+  .screen.active { display: flex; }
+
+  /* Header */
+  .header { background: #fff; padding: 16px 20px 12px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .header-title { font-size: 22px; font-weight: 700; }
+  .header-icon { width: 44px; height: 44px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .wnba-title { color: #2d6a4f; }
+  .nfl-title { color: #1a1a1a; }
+  .indy-title { color: #1a3560; }
+
+  /* Segment control (NFL) */
+  .segment { margin: 14px 16px 4px; background: #e8e8e8; border-radius: 10px; display: flex; padding: 3px; }
+  .seg-btn { flex: 1; padding: 8px; text-align: center; border-radius: 8px; font-size: 15px; font-weight: 500; color: var(--text-muted); cursor: pointer; transition: all 0.2s; border: none; background: transparent; }
+  .seg-btn.active { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
+
+  /* Section label */
+  .section-label { font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 14px 16px 8px; background: #e8e8e8; display: inline-block; padding: 4px 12px; border-radius: 20px; margin-left: 16px; }
+
+  /* Game cards */
+  .games-list { padding: 0 16px 16px; flex: 1; overflow-y: auto; }
+  .card { background: var(--card-bg); border-radius: 14px; padding: 14px 16px; margin-bottom: 10px; border: 1px solid var(--border); }
+  .card-wnba { background: #eaf5f0; border-color: #c3dfd0; }
+  .card-cowboys { background: #eaeff8; border-color: #c5d3e8; }
+  .card-texans { background: #fdecea; border-color: #f5c6c2; }
+  .card-indy { background: #e8eef8; border-color: #c5d2e8; }
+
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+  .card-date { font-size: 13px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; }
+  .card-date svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+  .badge { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 4px 10px; border-radius: 20px; white-space: nowrap; }
+  .badge-upcoming { background: #1a2744; color: #fff; }
+  .badge-win { background: transparent; color: #2d6a4f; border: 1.5px solid #2d6a4f; }
+  .badge-loss { background: transparent; color: #c0392b; border: 1.5px solid #c0392b; }
+  .badge-finished { background: transparent; color: #666; border: 1.5px solid #999; }
+
+  .card-opponent { font-size: 18px; font-weight: 700; margin: 4px 0 2px; }
+  .card-wnba .card-opponent { color: #1b4332; }
+  .card-cowboys .card-opponent { color: #1a2744; }
+  .card-texans .card-opponent { color: #7b1a15; }
+  .card-indy .card-opponent { color: #1a3560; }
+  .card-location { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
+
+  .card-divider { height: 1px; background: rgba(0,0,0,0.08); margin: 10px 0; }
+
+  .card-meta { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-muted); gap: 8px; }
+  .meta-item { display: flex; align-items: center; gap: 5px; }
+  .meta-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  /* Score display */
+  .score-block { display: flex; align-items: center; justify-content: space-between; margin: 8px 0; }
+  .score-team { text-align: center; flex: 1; }
+  .score-team-name { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+  .score-num { font-size: 36px; font-weight: 700; line-height: 1.1; }
+  .score-win { color: #2d6a4f; }
+  .score-loss { color: #c0392b; }
+  .score-neutral { color: var(--text); }
+  .score-divider { text-align: center; padding: 0 12px; }
+  .score-final { font-size: 11px; font-weight: 700; color: var(--text-muted); letter-spacing: 1px; }
+
+  /* Podium (IndyCar) */
+  .podium { margin: 8px 0; }
+  .podium-row { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); padding: 3px 0; }
+  .podium-medal { font-size: 16px; width: 22px; text-align: center; }
+
+  /* Record */
+  .record { padding: 10px 16px 0; }
+  .record-num { font-size: 32px; font-weight: 800; color: var(--text); }
+  .record-label { font-size: 15px; color: var(--text-muted); font-weight: 400; }
+
+  /* Bottom tab bar */
+  .tabbar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid var(--border); display: flex; height: calc(var(--tab-h) + var(--safe-bottom)); padding-bottom: var(--safe-bottom); z-index: 100; }
+  .tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; padding: 8px 0 4px; gap: 4px; border: none; background: transparent; }
+  .tab-icon { font-size: 26px; line-height: 1; }
+  .tab-label { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+  .tab.active .tab-label { font-weight: 700; }
+  .tab-wnba.active .tab-label { color: #c49a00; }
+  .tab-nfl.active .tab-label { color: #8B4513; }
+  .tab-indy.active .tab-label { color: #1a3560; }
+
+  .content-scroll { flex: 1; overflow-y: auto; padding-bottom: calc(var(--tab-h) + var(--safe-bottom) + 8px); }
+
+  /* Loading / Error */
+  .loading { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 15px; }
+  .loading-spinner { display: inline-block; width: 24px; height: 24px; border: 2px solid var(--border); border-top-color: var(--text-muted); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-msg { background: #fff3f3; border: 1px solid #ffd0d0; border-radius: 12px; padding: 16px; margin: 16px; font-size: 14px; color: #c0392b; }
+</style>
+</head>
+<body>
+
+<!-- WNBA Screen -->
+<div class="screen active" id="screen-wnba">
+  <div class="header">
+    <span class="header-title wnba-title">Indiana Fever</span>
+    <div class="header-icon">🏀</div>
+  </div>
+  <div class="content-scroll">
+    <div class="record" id="wnba-record"></div>
+    <div id="wnba-content"><div class="loading"><div class="loading-spinner"></div><br>Loading schedule…</div></div>
+  </div>
+</div>
+
+<!-- NFL Screen -->
+<div class="screen" id="screen-nfl">
+  <div class="header">
+    <span class="header-title nfl-title">NFL</span>
+    <div class="header-icon">🏈</div>
+  </div>
+  <div class="segment">
+    <button class="seg-btn active" id="seg-cowboys" onclick="switchNFL('cowboys')">Cowboys</button>
+    <button class="seg-btn" id="seg-texans" onclick="switchNFL('texans')">Texans</button>
+  </div>
+  <div class="content-scroll" style="padding-top:0">
+    <div id="nfl-content"><div class="loading"><div class="loading-spinner"></div><br>Loading schedule…</div></div>
+  </div>
+</div>
+
+<!-- IndyCar Screen -->
+<div class="screen" id="screen-indy">
+  <div class="header">
+    <span class="header-title indy-title">IndyCar</span>
+    <div class="header-icon">🏁</div>
+  </div>
+  <div class="content-scroll">
+    <div id="indy-content"><div class="loading"><div class="loading-spinner"></div><br>Loading schedule…</div></div>
+  </div>
+</div>
+
+<!-- Tab Bar -->
+<div class="tabbar">
+  <button class="tab tab-wnba active" onclick="switchTab('wnba')">
+    <span class="tab-icon">🏀</span>
+    <span class="tab-label">WNBA</span>
+  </button>
+  <button class="tab tab-nfl" onclick="switchTab('nfl')">
+    <span class="tab-icon">🏈</span>
+    <span class="tab-label">NFL</span>
+  </button>
+  <button class="tab tab-indy" onclick="switchTab('indy')">
+    <span class="tab-icon">🏁</span>
+    <span class="tab-label">IndyCar</span>
+  </button>
+</div>
+
+<script>
+const PROXY = '/.netlify/functions/sports';
+
+let currentTab = 'wnba';
+let nflTeam = 'cowboys';
+let wnbaData = null, nflCowboysData = null, nflTexansData = null, indyData = null;
+
+const calIcon = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="13" rx="2"/><path d="M1 6h14M5 1v2M11 1v2"/></svg>`;
+const tvIcon = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="4" width="14" height="10" rx="2"/><path d="M5 2l3 2 3-2"/></svg>`;
+const pinIcon = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1C5.8 1 4 2.8 4 5c0 3 4 9 4 9s4-6 4-9c0-2.2-1.8-4-4-4z"/><circle cx="8" cy="5" r="1.5"/></svg>`;
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('screen-' + tab).classList.add('active');
+  document.querySelector('.tab-' + tab).classList.add('active');
+  if (tab === 'wnba' && !wnbaData) loadWNBA();
+  if (tab === 'nfl' && !nflCowboysData) loadNFL();
+  if (tab === 'indy' && !indyData) loadIndyCar();
+}
+
+function switchNFL(team) {
+  nflTeam = team;
+  document.getElementById('seg-cowboys').classList.toggle('active', team === 'cowboys');
+  document.getElementById('seg-texans').classList.toggle('active', team === 'texans');
+  renderNFL();
+}
+
+function fmtDate(dateStr) {
+  const d = new Date(dateStr);
+  const opts = { month: 'short', day: 'numeric', year: 'numeric' };
+  const datePart = d.toLocaleDateString('en-US', opts);
+  const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return datePart + ' at ' + timePart;
+}
+
+function truncate(str, n) {
+  if (!str) return '';
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+// ─── WNBA ───────────────────────────────────────────────
+async function loadWNBA() {
+  try {
+    const res = await fetch(`${PROXY}?sport=wnba&team=indiana-fever`);
+    wnbaData = await res.json();
+    renderWNBA();
+  } catch(e) {
+    document.getElementById('wnba-content').innerHTML = `<div class="error-msg">Unable to load schedule. Check your connection and try again.</div>`;
+  }
+}
+
+function renderWNBA() {
+  if (!wnbaData) return;
+  const { record, games } = wnbaData;
+  if (record) {
+    document.getElementById('wnba-record').innerHTML = `<span class="record-num">${record.wins}–${record.losses}</span> <span class="record-label">Season Record</span>`;
+  }
+  const now = new Date();
+  const upcoming = games.filter(g => new Date(g.date) > now);
+  const results = games.filter(g => new Date(g.date) <= now).reverse();
+  let html = '';
+  if (upcoming.length) {
+    html += renderWNBAGames(upcoming, false);
+  }
+  if (results.length) {
+    html += `<div class="section-label">RESULTS</div>`;
+    html += renderWNBAGames(results, true);
+  }
+  document.getElementById('wnba-content').innerHTML = `<div class="games-list">${html}</div>`;
+}
+
+function renderWNBAGames(games, isResult) {
+  return games.map(g => {
+    const isHome = g.homeTeam === 'Indiana Fever';
+    const opponent = isHome ? g.awayTeam : g.homeTeam;
+    const prefix = isHome ? 'vs' : '@';
+    let badge = '', scoreHtml = '';
+    if (!isResult) {
+      badge = `<span class="badge badge-upcoming">UPCOMING</span>`;
+    } else if (g.homeScore !== undefined) {
+      const feverScore = isHome ? g.homeScore : g.awayScore;
+      const oppScore = isHome ? g.awayScore : g.homeScore;
+      const won = feverScore > oppScore;
+      badge = won ? `<span class="badge badge-win">WIN</span>` : `<span class="badge badge-loss">LOSS</span>`;
+      const feverClass = won ? 'score-win' : 'score-loss';
+      const oppClass = won ? 'score-neutral' : 'score-neutral';
+      const shortOpp = opponent.split(' ').pop();
+      scoreHtml = `
+        <div class="score-block">
+          <div class="score-team"><div class="score-team-name">Fever</div><div class="score-num ${feverClass}">${feverScore}</div></div>
+          <div class="score-divider"><div class="score-final">FINAL</div></div>
+          <div class="score-team"><div class="score-team-name">${shortOpp}</div><div class="score-num score-neutral">${oppScore}</div></div>
+        </div>`;
+    } else {
+      badge = `<span class="badge badge-win">WIN</span>`;
+    }
+    return `
+      <div class="card card-wnba">
+        <div class="card-top">
+          <div class="card-date">${calIcon} ${fmtDate(g.date)}</div>
+          ${badge}
+        </div>
+        <div class="card-opponent">${prefix} ${opponent}</div>
+        <div class="card-location">${isHome ? 'Home' : 'Away'}</div>
+        ${scoreHtml}
+        <div class="card-divider"></div>
+        <div class="card-meta">
+          <div class="meta-item">${tvIcon} ${truncate(g.broadcasts?.join(', ') || '', 22)}</div>
+          <div class="meta-item">${pinIcon} ${truncate(g.venue || '', 22)}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─── NFL ────────────────────────────────────────────────
+async function loadNFL() {
+  try {
+    const [cRes, tRes] = await Promise.all([
+      fetch(`${PROXY}?sport=nfl&team=dallas-cowboys`),
+      fetch(`${PROXY}?sport=nfl&team=houston-texans`)
+    ]);
+    nflCowboysData = await cRes.json();
+    nflTexansData = await tRes.json();
+    renderNFL();
+  } catch(e) {
+    document.getElementById('nfl-content').innerHTML = `<div class="error-msg">Unable to load schedule. Check your connection and try again.</div>`;
+  }
+}
+
+function renderNFL() {
+  const data = nflTeam === 'cowboys' ? nflCowboysData : nflTexansData;
+  if (!data) { document.getElementById('nfl-content').innerHTML = `<div class="loading"><div class="loading-spinner"></div><br>Loading…</div>`; return; }
+  const cardClass = nflTeam === 'cowboys' ? 'card-cowboys' : 'card-texans';
+  const teamName = nflTeam === 'cowboys' ? 'Dallas Cowboys' : 'Houston Texans';
+  const shortName = nflTeam === 'cowboys' ? 'Cowboys' : 'Texans';
+  const now = new Date();
+  const upcoming = data.games.filter(g => new Date(g.date) > now);
+  const results = data.games.filter(g => new Date(g.date) <= now).reverse();
+  let html = '';
+  const renderGames = (games, isResult) => games.map(g => {
+    const isHome = g.homeTeam === teamName;
+    const opponent = isHome ? g.awayTeam : g.homeTeam;
+    const prefix = isHome ? 'vs' : '@';
+    let badge = '', scoreHtml = '';
+    if (!isResult) {
+      badge = `<span class="badge badge-upcoming">UPCOMING</span>`;
+    } else if (g.homeScore !== undefined) {
+      const myScore = isHome ? g.homeScore : g.awayScore;
+      const oppScore = isHome ? g.awayScore : g.homeScore;
+      const won = myScore > oppScore;
+      badge = won ? `<span class="badge badge-win">WIN</span>` : `<span class="badge badge-loss">LOSS</span>`;
+      const shortOpp = opponent.split(' ').pop();
+      scoreHtml = `
+        <div class="score-block">
+          <div class="score-team"><div class="score-team-name">${shortName}</div><div class="score-num ${won?'score-win':'score-loss'}">${myScore}</div></div>
+          <div class="score-divider"><div class="score-final">FINAL</div></div>
+          <div class="score-team"><div class="score-team-name">${shortOpp}</div><div class="score-num score-neutral">${oppScore}</div></div>
+        </div>`;
+    }
+    return `
+      <div class="card ${cardClass}">
+        <div class="card-top">
+          <div class="card-date">${calIcon} ${fmtDate(g.date)}</div>
+          ${badge}
+        </div>
+        <div class="card-opponent">${prefix} ${opponent}</div>
+        <div class="card-location">${isHome ? 'Home' : 'Away'}</div>
+        ${scoreHtml}
+        <div class="card-divider"></div>
+        <div class="card-meta">
+          <div class="meta-item">${tvIcon} ${truncate(g.broadcasts?.join(', ') || '', 18)}</div>
+          <div class="meta-item">${pinIcon} ${truncate(g.venue || '', 22)}</div>
+        </div>
+      </div>`;
+  }).join('');
+  html += renderGames(upcoming, false);
+  if (results.length) { html += `<div class="section-label">RESULTS</div>`; html += renderGames(results, true); }
+  document.getElementById('nfl-content').innerHTML = `<div class="games-list">${html}</div>`;
+}
+
+// ─── IndyCar ────────────────────────────────────────────
+async function loadIndyCar() {
+  try {
+    const res = await fetch(`${PROXY}?sport=indycar`);
+    indyData = await res.json();
+    renderIndyCar();
+  } catch(e) {
+    document.getElementById('indy-content').innerHTML = `<div class="error-msg">Unable to load schedule. Check your connection and try again.</div>`;
+  }
+}
+
+function renderIndyCar() {
+  if (!indyData) return;
+  const now = new Date();
+  const upcoming = indyData.races.filter(r => new Date(r.date) > now);
+  const finished = indyData.races.filter(r => new Date(r.date) <= now).reverse();
+  let html = '';
+  if (upcoming.length) {
+    html += `<div class="section-label">UPCOMING RACES</div>`;
+    html += upcoming.map(r => `
+      <div class="card card-indy">
+        <div class="card-top">
+          <div class="card-date">${calIcon} ${fmtDate(r.date)}</div>
+          <span class="badge badge-upcoming">UPCOMING</span>
+        </div>
+        <div class="card-opponent" style="color:#1a3560">${r.name}</div>
+        <div class="card-divider"></div>
+        <div class="card-meta">
+          <div class="meta-item">${tvIcon} ${r.broadcast || 'TBD'}</div>
+          <div class="meta-item">${pinIcon} ${truncate(r.venue || 'TBD', 22)}</div>
+        </div>
+      </div>`).join('');
+  }
+  if (finished.length) {
+    html += `<div class="section-label">RACE RESULTS</div>`;
+    html += finished.map(r => {
+      const podium = r.results ? `
+        <div class="podium">
+          ${r.results[0] ? `<div class="podium-row"><span class="podium-medal">🏆</span> 1st: ${r.results[0]}</div>` : ''}
+          ${r.results[1] ? `<div class="podium-row"><span class="podium-medal">🥈</span> 2nd: ${r.results[1]}</div>` : ''}
+          ${r.results[2] ? `<div class="podium-row"><span class="podium-medal">🥉</span> 3rd: ${r.results[2]}</div>` : ''}
+        </div>` : '';
+      return `
+        <div class="card card-indy">
+          <div class="card-top">
+            <div class="card-date">${calIcon} ${fmtDate(r.date)}</div>
+            <span class="badge badge-finished">FINISHED</span>
+          </div>
+          <div class="card-opponent" style="color:#1a3560">${r.name}</div>
+          ${podium ? '<div class="card-divider"></div>' + podium : ''}
+          <div class="card-divider"></div>
+          <div class="card-meta">
+            <div class="meta-item">${tvIcon} ${r.broadcast || 'TBD'}</div>
+            <div class="meta-item">${pinIcon} ${truncate(r.venue || 'TBD', 22)}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  document.getElementById('indy-content').innerHTML = `<div class="games-list">${html}</div>`;
+}
+
+
+// Register service worker
+if ("serviceWorker" in navigator) { navigator.serviceWorker.register("/sw.js"); }
+
+// Load initial tab
+loadWNBA();
+</script>
+</body>
+</html>
