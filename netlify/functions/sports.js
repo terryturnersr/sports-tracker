@@ -118,7 +118,7 @@ async function getTeamSchedule(teamKey) {
 
 async function getIndyCar() {
   const urls = [
-    `${ESPN_BASE}/racing/indycar/scoreboard`,
+    `${ESPN_BASE}/racing/indycar/scoreboard?dates=20260301-20260930&limit=30`,
     `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
     `${ESPN_BASE}/racing/indycar/scoreboard?limit=30`,
   ];
