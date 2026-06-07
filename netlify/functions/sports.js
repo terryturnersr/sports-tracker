@@ -158,18 +158,24 @@ exports.handler = async (event) => {
   };
 
   try {
-    const { sport, team, debug } = event.queryStringParameters || {};
-
     if (debug === '1') {
-      const year = new Date().getFullYear();
-      const url = `${ESPN_BASE}/racing/indycar/scoreboard?dates=${year}0301-${year}0930&limit=30`;
-      let raw = null;
-      try { raw = await fetchJSON(url); } catch(e) { raw = { error: e.message }; }
-      return { statusCode: 200, headers, body: JSON.stringify({ url, eventCount: raw?.events?.length, firstEvent: raw?.events?.[0] }) };
+      const urls = [
+        `${ESPN_BASE}/racing/indycar/scoreboard`,
+        `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
+        `${ESPN_BASE}/racing/indycar/scoreboard?limit=30`,
+        `https://sports.core.api.espn.com/v2/sports/racing/leagues/indycar/seasons/2026/events?limit=30`,
+      ];
+      const results = {};
+      for (const url of urls) {
+        try {
+          const d = await fetchJSON(url);
+          results[url] = { eventCount: d?.events?.length ?? d?.count ?? 'no events key', keys: Object.keys(d) };
+        } catch(e) {
+          results[url] = { error: e.message };
+        }
+      }
+      return { statusCode: 200, headers, body: JSON.stringify(results) };
     }
-
-    let result;
-    if (sport === 'indycar') {
       result = await getIndyCar();
     } else if (team) {
       result = await getTeamSchedule(team);
