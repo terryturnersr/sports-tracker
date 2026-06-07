@@ -117,21 +117,14 @@ async function getTeamSchedule(teamKey) {
 }
 
 async function getIndyCar() {
-  const urls = [
-    `${ESPN_BASE}/racing/indycar/scoreboard?dates=20260301-20260930&limit=30`,
-    `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
-    `${ESPN_BASE}/racing/indycar/scoreboard?limit=30`,
-  ];
+  const url = `${ESPN_BASE}/racing/indycar/scoreboard?dates=20260301-20260930&limit=30`;
   let data = null;
-  for (const url of urls) {
-    try {
-      const d = await fetchJSON(url);
-      if (d?.events?.length) { data = d; break; }
-    } catch(e) {}
-  }
-  if (!data) return { races: [] };
+  try {
+    data = await fetchJSON(url);
+  } catch(e) {}
+  if (!data?.events?.length) return { races: [], debug: 'no events returned' };
   const races = [];
-  for (const event of (data.events || [])) {
+  for (const event of data.events) {
     const comp = event.competitions?.[0];
     const broadcasts = getBroadcasts(comp || {});
     const status = comp?.status?.type?.state;
@@ -164,6 +157,23 @@ exports.handler = async (event) => {
     const params = event.queryStringParameters || {};
     const sport = params.sport;
     const team = params.team;
+    const debug = params.debug;
+
+    if (debug === '1') {
+      const url = `${ESPN_BASE}/racing/indycar/scoreboard?dates=20260301-20260930&limit=30`;
+      try {
+        const d = await fetchJSON(url);
+        return { statusCode: 200, headers, body: JSON.stringify({
+          eventCount: d?.events?.length,
+          keys: Object.keys(d),
+          firstEvent: d?.events?.[0]?.name,
+          allEventNames: d?.events?.map(e => e.name)
+        })};
+      } catch(e) {
+        return { statusCode: 200, headers, body: JSON.stringify({ error: e.message }) };
+      }
+    }
+
     let result;
     if (sport === 'indycar') {
       result = await getIndyCar();
