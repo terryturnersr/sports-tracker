@@ -4,17 +4,29 @@ const zlib = require('zlib');
 function fetchJSON(url) {
   return new Promise((resolve, reject) => {
     https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Encoding': 'gzip, deflate' } }, (res) => {
-      let stream = res;
-      if (res.headers['content-encoding'] === 'gzip') {
-        stream = res.pipe(zlib.createGunzip());
-      }
-      let data = '';
-      stream.on('data', chunk => data += chunk);
-      stream.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch(e) { reject(new Error('JSON parse error: ' + e.message)); }
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        const encoding = res.headers['content-encoding'];
+        if (encoding === 'gzip') {
+          zlib.gunzip(buffer, (err, decoded) => {
+            if (err) return reject(err);
+            try { resolve(JSON.parse(decoded.toString())); }
+            catch(e) { reject(new Error('JSON parse error: ' + e.message)); }
+          });
+        } else if (encoding === 'deflate') {
+          zlib.inflate(buffer, (err, decoded) => {
+            if (err) return reject(err);
+            try { resolve(JSON.parse(decoded.toString())); }
+            catch(e) { reject(new Error('JSON parse error: ' + e.message)); }
+          });
+        } else {
+          try { resolve(JSON.parse(buffer.toString())); }
+          catch(e) { reject(new Error('JSON parse error: ' + e.message)); }
+        }
       });
-      stream.on('error', reject);
+      res.on('error', reject);
     }).on('error', reject);
   });
 }
@@ -152,7 +164,6 @@ exports.handler = async (event) => {
     const params = event.queryStringParameters || {};
     const sport = params.sport;
     const team = params.team;
-
     let result;
     if (sport === 'indycar') {
       result = await getIndyCar();
