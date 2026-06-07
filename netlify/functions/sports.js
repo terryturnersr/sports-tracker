@@ -158,7 +158,9 @@ exports.handler = async (event) => {
   };
 
   try {
-    if (debug === '1') {
+    const { sport, team, debug } = event.queryStringParameters || {};
+
+    if (debug === '1') 
       const urls = [
         `${ESPN_BASE}/racing/indycar/scoreboard`,
         `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
