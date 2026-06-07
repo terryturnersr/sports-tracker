@@ -1,14 +1,20 @@
 const https = require('https');
+const zlib = require('zlib');
 
 function fetchJSON(url) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Encoding': 'gzip, deflate' } }, (res) => {
+      let stream = res;
+      if (res.headers['content-encoding'] === 'gzip') {
+        stream = res.pipe(zlib.createGunzip());
+      }
       let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
+      stream.on('data', chunk => data += chunk);
+      stream.on('end', () => {
         try { resolve(JSON.parse(data)); }
         catch(e) { reject(new Error('JSON parse error: ' + e.message)); }
       });
+      stream.on('error', reject);
     }).on('error', reject);
   });
 }
@@ -103,16 +109,15 @@ async function getIndyCar() {
     `${ESPN_BASE}/racing/indycar/scoreboard`,
     `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
     `${ESPN_BASE}/racing/indycar/scoreboard?limit=30`,
-    `https://sports.core.api.espn.com/v2/sports/racing/leagues/indycar/seasons/2026/events?limit=30`,
   ];
   let data = null;
   for (const url of urls) {
     try {
       const d = await fetchJSON(url);
-      if (d?.events?.length || d?.count) { data = d; break; }
+      if (d?.events?.length) { data = d; break; }
     } catch(e) {}
   }
-  if (!data) return { races: [], debug: 'no data from any endpoint' };
+  if (!data) return { races: [] };
   const races = [];
   for (const event of (data.events || [])) {
     const comp = event.competitions?.[0];
@@ -147,26 +152,6 @@ exports.handler = async (event) => {
     const params = event.queryStringParameters || {};
     const sport = params.sport;
     const team = params.team;
-    const debug = params.debug;
-
-    if (debug === '1') {
-      const urls = [
-        `${ESPN_BASE}/racing/indycar/scoreboard`,
-        `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
-        `${ESPN_BASE}/racing/indycar/scoreboard?limit=30`,
-        `https://sports.core.api.espn.com/v2/sports/racing/leagues/indycar/seasons/2026/events?limit=30`,
-      ];
-      const results = {};
-      for (const url of urls) {
-        try {
-          const d = await fetchJSON(url);
-          results[url] = { eventCount: d?.events?.length ?? d?.count ?? 'no events key', keys: Object.keys(d) };
-        } catch(e) {
-          results[url] = { error: e.message };
-        }
-      }
-      return { statusCode: 200, headers, body: JSON.stringify(results) };
-    }
 
     let result;
     if (sport === 'indycar') {
