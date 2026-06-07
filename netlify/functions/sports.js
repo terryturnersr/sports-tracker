@@ -40,7 +40,6 @@ function getVenue(comp) {
 }
 
 function parseScore(competitor) {
-  // ESPN nests score as {value: 91, displayValue: "91"}
   const s = competitor.score;
   if (s == null) return null;
   if (typeof s === 'object') return parseInt(s.value ?? s.displayValue) || null;
@@ -60,7 +59,6 @@ async function getTeamSchedule(teamKey) {
   for (const event of (data.events || [])) {
     const comp = event.competitions?.[0];
     if (!comp) continue;
-
     const home = comp.competitors?.find(c => c.homeAway === 'home');
     const away = comp.competitors?.find(c => c.homeAway === 'away');
     if (!home || !away) continue;
@@ -78,10 +76,8 @@ async function getTeamSchedule(teamKey) {
     if (status === 'post') {
       game.homeScore = parseScore(home);
       game.awayScore = parseScore(away);
-
       const ours = comp.competitors?.find(c => c.team?.id === String(t.id));
       game.won = ours?.winner === true;
-
       const recStr = ours?.record?.[0]?.displayValue || ours?.records?.[0]?.summary || '';
       if (recStr) {
         const parts = recStr.split('-');
@@ -92,7 +88,6 @@ async function getTeamSchedule(teamKey) {
         }
       }
     }
-
     games.push(game);
   }
 
@@ -111,8 +106,20 @@ async function getTeamSchedule(teamKey) {
 }
 
 async function getIndyCar() {
+  const year = new Date().getFullYear();
+  // Use date range for full season - IndyCar season runs March-September
+  const startDate = `${year}0301`;
+  const endDate   = `${year}0930`;
+  const url = `${ESPN_BASE}/racing/indycar/scoreboard?dates=${startDate}-${endDate}&limit=30`;
+
   let data = null;
-  try { data = await fetchJSON(`${ESPN_BASE}/racing/indycar/scoreboard`); } catch(e) {}
+  try { data = await fetchJSON(url); } catch(e) {}
+
+  // Fallback: try without date range
+  if (!data?.events?.length) {
+    try { data = await fetchJSON(`${ESPN_BASE}/racing/indycar/scoreboard?limit=30`); } catch(e) {}
+  }
+
   if (!data?.events?.length) return { races: [] };
 
   const races = [];
@@ -120,6 +127,7 @@ async function getIndyCar() {
     const comp = event.competitions?.[0];
     const broadcasts = getBroadcasts(comp || {});
     const status = comp?.status?.type?.state;
+
     const race = {
       name:      event.shortName || event.name,
       date:      event.date,
@@ -127,6 +135,7 @@ async function getIndyCar() {
       venue:     comp?.venue?.fullName || null,
       results:   null,
     };
+
     if (status === 'post') {
       const sorted = (comp.competitors || [])
         .sort((a, b) => parseInt(a.order || 99) - parseInt(b.order || 99));
@@ -134,8 +143,10 @@ async function getIndyCar() {
         .map(c => c.athlete?.displayName || c.athlete?.fullName || c.team?.displayName)
         .filter(Boolean);
     }
+
     races.push(race);
   }
+
   return { races };
 }
 
