@@ -158,7 +158,16 @@ exports.handler = async (event) => {
   };
 
   try {
-    const { sport, team } = event.queryStringParameters || {};
+    const { sport, team, debug } = event.queryStringParameters || {};
+
+    if (debug === '1') {
+      const year = new Date().getFullYear();
+      const url = `${ESPN_BASE}/racing/indycar/scoreboard?dates=${year}0301-${year}0930&limit=30`;
+      let raw = null;
+      try { raw = await fetchJSON(url); } catch(e) { raw = { error: e.message }; }
+      return { statusCode: 200, headers, body: JSON.stringify({ url, eventCount: raw?.events?.length, firstEvent: raw?.events?.[0] }) };
+    }
+
     let result;
     if (sport === 'indycar') {
       result = await getIndyCar();
