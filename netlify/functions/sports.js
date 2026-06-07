@@ -16,97 +16,112 @@ function fetchJSON(url) {
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
 const TEAM_IDS = {
-  'indiana-fever':   { sport: 'basketball', league: 'wnba', id: '5',  name: 'Indiana Fever' },
-  'dallas-cowboys':  { sport: 'football',   league: 'nfl',  id: '6',  name: 'Dallas Cowboys' },
-  'houston-texans':  { sport: 'football',   league: 'nfl',  id: '34', name: 'Houston Texans' },
+  'indiana-fever':  { sport: 'basketball', league: 'wnba', id: '5',  name: 'Indiana Fever' },
+  'dallas-cowboys': { sport: 'football',   league: 'nfl',  id: '6',  name: 'Dallas Cowboys' },
+  'houston-texans': { sport: 'football',   league: 'nfl',  id: '34', name: 'Houston Texans' },
 };
+
+function getBroadcasts(comp) {
+  const broadcasts = [];
+  for (const b of (comp.broadcasts || [])) {
+    if (Array.isArray(b.names)) broadcasts.push(...b.names);
+    else if (b.name) broadcasts.push(b.name);
+    else if (b.market?.type === 'National' && b.media?.shortName) broadcasts.push(b.media.shortName);
+  }
+  return broadcasts;
+}
+
+function getVenue(comp) {
+  const venue = comp.venue?.fullName || null;
+  const city  = comp.venue?.address?.city || '';
+  const state = comp.venue?.address?.state || '';
+  if (!venue) return null;
+  return city ? `${venue}, ${city}${state ? ', ' + state : ''}` : venue;
+}
+
+function parseEvent(event, teamId) {
+  const comp = event.competitions?.[0];
+  if (!comp) return null;
+
+  const home = comp.competitors?.find(c => c.homeAway === 'home');
+  const away = comp.competitors?.find(c => c.homeAway === 'away');
+  if (!home || !away) return null;
+
+  const status = comp.status?.type?.state;
+  const game = {
+    date:     event.date,
+    homeTeam: home.team?.displayName || home.team?.name,
+    awayTeam: away.team?.displayName || away.team?.name,
+    broadcasts: getBroadcasts(comp),
+    venue: getVenue(comp),
+    status,
+  };
+
+  if (status === 'post') {
+    const hs = home.score;
+    const as = away.score;
+    game.homeScore = (hs !== null && hs !== undefined && hs !== '') ? parseInt(hs) : null;
+    game.awayScore = (as !== null && as !== undefined && as !== '') ? parseInt(as) : null;
+
+    const ours = comp.competitors?.find(c => c.team?.id === String(teamId));
+    const recStr = ours?.records?.[0]?.summary || '';
+    if (recStr) {
+      const parts = recStr.split('-');
+      if (parts.length >= 2) return { game, wins: parseInt(parts[0]) || 0, losses: parseInt(parts[1]) || 0 };
+    }
+  }
+
+  return { game, wins: 0, losses: 0 };
+}
 
 async function getTeamSchedule(teamKey) {
   const t = TEAM_IDS[teamKey];
   if (!t) throw new Error('Unknown team: ' + teamKey);
 
   const year = new Date().getFullYear();
-  const url = `${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}/schedule?season=${year}`;
-  const data = await fetchJSON(url);
+  const schedUrl = `${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}/schedule?season=${year}`;
+  const data = await fetchJSON(schedUrl);
 
   const games = [];
   let wins = 0, losses = 0;
 
   for (const event of (data.events || [])) {
-    const comp = event.competitions?.[0];
-    if (!comp) continue;
-
-    const home = comp.competitors?.find(c => c.homeAway === 'home');
-    const away = comp.competitors?.find(c => c.homeAway === 'away');
-    if (!home || !away) continue;
-
-    const broadcasts = [];
-    for (const b of (comp.broadcasts || [])) {
-      if (Array.isArray(b.names)) broadcasts.push(...b.names);
-      else if (b.name) broadcasts.push(b.name);
+    const result = parseEvent(event, t.id);
+    if (!result) continue;
+    games.push(result.game);
+    if (result.wins > wins || result.losses > losses) {
+      wins = result.wins;
+      losses = result.losses;
     }
-
-    const venue = comp.venue?.fullName || null;
-    const city  = comp.venue?.address?.city || '';
-    const state = comp.venue?.address?.state || '';
-    const venueDisplay = venue
-      ? (city ? `${venue}, ${city}${state ? ', ' + state : ''}` : venue)
-      : null;
-
-    const game = {
-      date:      event.date,
-      homeTeam:  home.team?.displayName || home.team?.name,
-      awayTeam:  away.team?.displayName || away.team?.name,
-      broadcasts,
-      venue: venueDisplay,
-    };
-
-    const state2 = comp.status?.type?.state;
-    if (state2 === 'post') {
-      const rawHome = home.score;
-      const rawAway = away.score;
-      game.homeScore = rawHome !== undefined && rawHome !== null ? parseInt(rawHome) : null;
-      game.awayScore = rawAway !== undefined && rawAway !== null ? parseInt(rawAway) : null;
-
-      const ours = comp.competitors?.find(c => c.team?.id === String(t.id));
-      const recStr = ours?.records?.[0]?.summary || ours?.record?.summary || '';
-      if (recStr) {
-        const parts = recStr.split('-');
-        if (parts.length >= 2) { wins = parseInt(parts[0]); losses = parseInt(parts[1]); }
-      }
-    }
-
-    games.push(game);
   }
 
-  if (wins === 0 && losses === 0 && data.team?.record?.items?.[0]?.summary) {
-    const parts = data.team.record.items[0].summary.split('-');
-    if (parts.length >= 2) { wins = parseInt(parts[0]); losses = parseInt(parts[1]); }
+  if (wins === 0 && losses === 0) {
+    try {
+      const teamData = await fetchJSON(`${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}`);
+      const rec = teamData.team?.record?.items?.[0]?.summary || '';
+      if (rec) {
+        const parts = rec.split('-');
+        if (parts.length >= 2) { wins = parseInt(parts[0]) || 0; losses = parseInt(parts[1]) || 0; }
+      }
+    } catch(e) {}
   }
 
   return { games, record: { wins, losses } };
 }
 
 async function getIndyCar() {
-  const urls = [
-    `${ESPN_BASE}/racing/indycar/scoreboard`,
-    `https://site.api.espn.com/apis/site/v2/sports/racing/indycar/scoreboard`,
-  ];
-
   let data = null;
-  for (const url of urls) {
-    try { data = await fetchJSON(url); if (data?.events?.length) break; } catch(e) {}
-  }
-  if (!data) return { races: [] };
+  try {
+    data = await fetchJSON(`${ESPN_BASE}/racing/indycar/scoreboard`);
+  } catch(e) {}
+
+  if (!data?.events?.length) return { races: [] };
 
   const races = [];
-  for (const event of (data.events || [])) {
+  for (const event of data.events) {
     const comp = event.competitions?.[0];
-    const broadcasts = [];
-    for (const b of (comp?.broadcasts || [])) {
-      if (Array.isArray(b.names)) broadcasts.push(...b.names);
-      else if (b.name) broadcasts.push(b.name);
-    }
+    const broadcasts = getBroadcasts(comp || {});
+    const status = comp?.status?.type?.state;
 
     const race = {
       name:      event.shortName || event.name,
@@ -116,11 +131,11 @@ async function getIndyCar() {
       results:   null,
     };
 
-    if (comp?.status?.type?.state === 'post') {
-      const sorted = (comp.competitors || [])
-        .filter(c => c.order || c.place)
-        .sort((a, b) => parseInt(a.order || a.place || 99) - parseInt(b.order || b.place || 99));
-      race.results = sorted.slice(0, 3)
+    if (status === 'post') {
+      const competitors = (comp.competitors || [])
+        .filter(c => c.order != null || c.statistics != null)
+        .sort((a, b) => parseInt(a.order || 99) - parseInt(b.order || 99));
+      race.results = competitors.slice(0, 3)
         .map(c => c.athlete?.displayName || c.athlete?.fullName || c.team?.displayName)
         .filter(Boolean);
     }
@@ -152,6 +167,6 @@ exports.handler = async (event) => {
 
     return { statusCode: 200, headers, body: JSON.stringify(result) };
   } catch (e) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: e.message, stack: e.stack }) };
+    return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
   }
 };
