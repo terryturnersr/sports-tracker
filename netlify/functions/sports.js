@@ -49,20 +49,16 @@ function parseScore(competitor) {
 async function getTeamSchedule(teamKey) {
   const t = TEAM_IDS[teamKey];
   if (!t) throw new Error('Unknown team: ' + teamKey);
-
   const year = new Date().getFullYear();
   const data = await fetchJSON(`${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}/schedule?season=${year}`);
-
   const games = [];
   let wins = 0, losses = 0;
-
   for (const event of (data.events || [])) {
     const comp = event.competitions?.[0];
     if (!comp) continue;
     const home = comp.competitors?.find(c => c.homeAway === 'home');
     const away = comp.competitors?.find(c => c.homeAway === 'away');
     if (!home || !away) continue;
-
     const status = comp.status?.type?.state;
     const game = {
       date:       event.date,
@@ -72,7 +68,6 @@ async function getTeamSchedule(teamKey) {
       venue:      getVenue(comp),
       status,
     };
-
     if (status === 'post') {
       game.homeScore = parseScore(home);
       game.awayScore = parseScore(away);
@@ -90,7 +85,6 @@ async function getTeamSchedule(teamKey) {
     }
     games.push(game);
   }
-
   if (wins === 0 && losses === 0) {
     try {
       const teamData = await fetchJSON(`${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}`);
@@ -101,33 +95,29 @@ async function getTeamSchedule(teamKey) {
       }
     } catch(e) {}
   }
-
   return { games, record: { wins, losses } };
 }
 
 async function getIndyCar() {
-  const year = new Date().getFullYear();
-  // Use date range for full season - IndyCar season runs March-September
-  const startDate = `${year}0301`;
-  const endDate   = `${year}0930`;
-  const url = `${ESPN_BASE}/racing/indycar/scoreboard?dates=${startDate}-${endDate}&limit=30`;
-
+  const urls = [
+    `${ESPN_BASE}/racing/indycar/scoreboard`,
+    `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
+    `${ESPN_BASE}/racing/indycar/scoreboard?limit=30`,
+    `https://sports.core.api.espn.com/v2/sports/racing/leagues/indycar/seasons/2026/events?limit=30`,
+  ];
   let data = null;
-  try { data = await fetchJSON(url); } catch(e) {}
-
-  // Fallback: try without date range
-  if (!data?.events?.length) {
-    try { data = await fetchJSON(`${ESPN_BASE}/racing/indycar/scoreboard?limit=30`); } catch(e) {}
+  for (const url of urls) {
+    try {
+      const d = await fetchJSON(url);
+      if (d?.events?.length || d?.count) { data = d; break; }
+    } catch(e) {}
   }
-
-  if (!data?.events?.length) return { races: [] };
-
+  if (!data) return { races: [], debug: 'no data from any endpoint' };
   const races = [];
-  for (const event of data.events) {
+  for (const event of (data.events || [])) {
     const comp = event.competitions?.[0];
     const broadcasts = getBroadcasts(comp || {});
     const status = comp?.status?.type?.state;
-
     const race = {
       name:      event.shortName || event.name,
       date:      event.date,
@@ -135,7 +125,6 @@ async function getIndyCar() {
       venue:     comp?.venue?.fullName || null,
       results:   null,
     };
-
     if (status === 'post') {
       const sorted = (comp.competitors || [])
         .sort((a, b) => parseInt(a.order || 99) - parseInt(b.order || 99));
@@ -143,10 +132,8 @@ async function getIndyCar() {
         .map(c => c.athlete?.displayName || c.athlete?.fullName || c.team?.displayName)
         .filter(Boolean);
     }
-
     races.push(race);
   }
-
   return { races };
 }
 
@@ -156,11 +143,13 @@ exports.handler = async (event) => {
     'Content-Type': 'application/json',
     'Cache-Control': 'max-age=60',
   };
-
   try {
-    const { sport, team, debug } = event.queryStringParameters || {};
+    const params = event.queryStringParameters || {};
+    const sport = params.sport;
+    const team = params.team;
+    const debug = params.debug;
 
-    if (debug === '1') 
+    if (debug === '1') {
       const urls = [
         `${ESPN_BASE}/racing/indycar/scoreboard`,
         `${ESPN_BASE}/racing/indycar/scoreboard?season=2026`,
@@ -178,6 +167,9 @@ exports.handler = async (event) => {
       }
       return { statusCode: 200, headers, body: JSON.stringify(results) };
     }
+
+    let result;
+    if (sport === 'indycar') {
       result = await getIndyCar();
     } else if (team) {
       result = await getTeamSchedule(team);
