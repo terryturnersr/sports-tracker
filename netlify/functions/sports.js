@@ -39,13 +39,20 @@ function getVenue(comp) {
   return city ? `${venue}, ${city}${state ? ', ' + state : ''}` : venue;
 }
 
+function parseScore(competitor) {
+  // ESPN nests score as {value: 91, displayValue: "91"}
+  const s = competitor.score;
+  if (s == null) return null;
+  if (typeof s === 'object') return parseInt(s.value ?? s.displayValue) || null;
+  return parseInt(s) || null;
+}
+
 async function getTeamSchedule(teamKey) {
   const t = TEAM_IDS[teamKey];
   if (!t) throw new Error('Unknown team: ' + teamKey);
 
   const year = new Date().getFullYear();
-  const schedUrl = `${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}/schedule?season=${year}`;
-  const data = await fetchJSON(schedUrl);
+  const data = await fetchJSON(`${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}/schedule?season=${year}`);
 
   const games = [];
   let wins = 0, losses = 0;
@@ -69,17 +76,13 @@ async function getTeamSchedule(teamKey) {
     };
 
     if (status === 'post') {
-      const hs = home.score ?? home.linescores?.[home.linescores?.length-1]?.value;
-      const as = away.score ?? away.linescores?.[away.linescores?.length-1]?.value;
-      game.homeScore = (hs != null && hs !== '') ? parseInt(hs) : null;
-      game.awayScore = (as != null && as !== '') ? parseInt(as) : null;
+      game.homeScore = parseScore(home);
+      game.awayScore = parseScore(away);
 
       const ours = comp.competitors?.find(c => c.team?.id === String(t.id));
-      if (ours?.winner !== undefined) {
-        game.won = ours.winner === true;
-      }
+      game.won = ours?.winner === true;
 
-      const recStr = ours?.records?.[0]?.summary || '';
+      const recStr = ours?.record?.[0]?.displayValue || ours?.records?.[0]?.summary || '';
       if (recStr) {
         const parts = recStr.split('-');
         if (parts.length >= 2) {
@@ -144,18 +147,7 @@ exports.handler = async (event) => {
   };
 
   try {
-    const { sport, team, debug } = event.queryStringParameters || {};
-
-    if (debug === '1' && team) {
-      const t = TEAM_IDS[team];
-      const raw = await fetchJSON(`${ESPN_BASE}/${t.sport}/${t.league}/teams/${t.id}/schedule?season=2026`);
-      const completed = raw.events?.find(e => e.competitions?.[0]?.status?.type?.state === 'post');
-      return { statusCode: 200, headers, body: JSON.stringify({
-        firstCompletedGame: completed?.competitions?.[0]?.competitors,
-        status: completed?.competitions?.[0]?.status
-      })};
-    }
-
+    const { sport, team } = event.queryStringParameters || {};
     let result;
     if (sport === 'indycar') {
       result = await getIndyCar();
@@ -164,7 +156,6 @@ exports.handler = async (event) => {
     } else {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing params' }) };
     }
-
     return { statusCode: 200, headers, body: JSON.stringify(result) };
   } catch (e) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
